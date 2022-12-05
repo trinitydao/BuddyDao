@@ -4,7 +4,7 @@
   "description": "Buddy Dao Contracts",
   "main": "index.js",
   "directories": {
-    "test": "test"
+    "test": "tests"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
