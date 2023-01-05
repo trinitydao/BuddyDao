@@ -73,9 +73,9 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
     event SetServiceFeeAddress(address _oldAddress, address _newAddress);
     event SetMaxFixedRate(uint256 _oldFixedRate, uint256 _newFixedRate);
     event Trust(address indexed _address, string _alias, address _token, uint256 indexed  _fixedRate, uint256 indexed _amount);
-    event ReduceTrust(address _approveAddress, uint256 _index, uint256 _cancelAmount);
-    event WithdrawAssets(address _lendAddress, uint256 _index, uint256 _borrowerAmount);
-    event Payment(address _lendAddress, uint256 _index, uint256 _payAmount);
+    event ReduceTrust(address _approveAddress, uint256 _lendIndex,uint256 _borrowerIndex, uint256 _cancelAmount);
+    event WithdrawAssets(address _lendAddress, uint256 _lendIndex,uint256 _borrowerIndex, uint256 _borrowerAmount);
+    event Payment(address _lendAddress, uint256 _lendIndex,uint256 _borrowerIndex, uint256 _payAmount);
 
 
     constructor (uint256 _serviceFee, address _serviceFeeAddress, uint256 _maxFixedRate) {
@@ -130,6 +130,16 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
         return lenderAddressData;
     }
 
+    // Get lend index
+    function GetLendIndex(address _lendAddress, address _approveAddress) public view returns(uint256 index){
+        return LenderIndex[_lendAddress][_approveAddress];
+    }
+
+    // Get Borrower index
+    function GetBorrowerIndex(address _borrowerAddress, address _Creditors) public view returns(uint256 index){
+        return BorrowerIndex[_borrowerAddress][_Creditors];
+    }
+
 
     // Get Borrower Info
     function GetBorrowerAddressLengeth(address _borrowerAddress) public view returns(uint256) {
@@ -154,6 +164,9 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
         require(_approveAddress != address(0), "_approveAddress is not a zero address");
         require(_token != address(0), "_token is not a zero address");
         require(_fixedRate <= MaxFixedRate, "Must be less than the maximum interest");
+
+        uint256 allowBalance = IERC20(_token).allowance(msg.sender, address(this));
+        require(_amount <= allowBalance, "Lack of authorized");
 
         uint256 erc20Balance = IERC20(_token).balanceOf(msg.sender);
         require(_amount <= erc20Balance, "The authorized quantity must be greater than the balance");
@@ -191,16 +204,21 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
     }
 
 
-    function RemoveTrust(address _approveAddress, uint256 _index, uint256 _cancelAmount) external nonReentrant whenNotPaused {
+    function RemoveTrust(address _approveAddress, uint256 _lendIndex, uint256 _borrowerIndex, uint256 _cancelAmount) external nonReentrant whenNotPaused {
         require(_approveAddress != address(0), "approveAddress is not a zero address");
         require(_cancelAmount != 0, "The number of cancellations cannot be equal to 0");
+        require(_approveAddress != msg.sender, "approveAddress is not msg.sender");
 
         Lender[]  storage lendInfo = LenderData[msg.sender];
         uint256 lendInfoLength = lendInfo.length;
-        require(_index <= lendInfoLength - 1, "Index Overrun");
+        require(_lendIndex <= lendInfoLength - 1, "Index Overrun");
+        Lender storage personalLenderInfo = LenderData[msg.sender][_lendIndex];
 
-        Lender storage personalLenderInfo = LenderData[msg.sender][_index];
-        Borrower storage personalBorrowerInfo = BorrowerData[_approveAddress][_index];
+
+        Borrower[] storage borrowerInfo = BorrowerData[_approveAddress];
+        uint256 borrowInfoLength = borrowerInfo.length;
+        require(_borrowerIndex <= borrowInfoLength - 1, "borrower index Overrun");
+        Borrower storage personalBorrowerInfo = BorrowerData[_approveAddress][_borrowerIndex];
 
         require(!personalLenderInfo.isCancel, "The authorization id record has been cancelled");
         // Number of Cancellations <= Number of Trusts - Number of Lending
@@ -218,20 +236,21 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
             personalBorrowerInfo.CreditLine = personalBorrowerInfo.CreditLine - _cancelAmount;
         }
         // log
-        emit ReduceTrust(_approveAddress, _index,_cancelAmount);
+        emit ReduceTrust(_approveAddress, _lendIndex, _borrowerIndex, _cancelAmount);
     }
 
 
-    function Withdrawal(address _lendAddress, uint256 _index, uint256 _borrowerAmount) external nonReentrant whenNotPaused {
+    function Withdrawal(address _lendAddress, uint256 _lendIndex, uint256 _borrowerIndex, uint256 _borrowerAmount) external nonReentrant whenNotPaused {
 
         require(_lendAddress != address(0), "_lendAddress is not a zero address");
+        require(_lendAddress != msg.sender, "lendAddress is not msg.sender");
         require(_borrowerAmount != 0, "The number of borrower amount cannot be equal to 0");
 
         Borrower[] storage borrowerInfo = BorrowerData[msg.sender];
         uint256 borrowerInfoLength = borrowerInfo.length;
-        require(_index <= borrowerInfoLength - 1, "Index Overrun");
+        require(_borrowerIndex <= borrowerInfoLength - 1, "Index Overrun");
+        Borrower storage personalBorrowerInfo = BorrowerData[msg.sender][_borrowerIndex];
 
-        Borrower storage personalBorrowerInfo = BorrowerData[msg.sender][_index];
         require(!personalBorrowerInfo.isCancel, "The authorization id record has been cancelled");
 
         // Current number of remaining loans = number of credits - number already lent
@@ -248,7 +267,11 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
         }
 
         // save data
-        Lender storage personalLenderInfo = LenderData[_lendAddress][_index];
+        Lender[]  storage lendInfo = LenderData[_lendAddress];
+        uint256 lendInfoLength = lendInfo.length;
+        require(_lendIndex <= lendInfoLength - 1, "Index Overrun");
+
+        Lender storage personalLenderInfo = LenderData[_lendAddress][_lendIndex];
         personalLenderInfo.Amount = personalLenderInfo.Amount + _borrowerAmount;
 
         // Total number of borrowers, statistics of fees charged by the platform
@@ -261,24 +284,26 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
         uint256 amount = getPayableAmount(personalBorrowerInfo.Token, personalBorrowerInfo.Creditors, msg.sender, _borrowerAmount);
         require(amount == _borrowerAmount, "The actual money lent is not the same as the money needed to be borrowed");
         // log
-        emit WithdrawAssets(_lendAddress, _index, _borrowerAmount);
+        emit WithdrawAssets(_lendAddress, _lendIndex, _borrowerIndex, _borrowerAmount);
     }
 
 
-    function Pay(address _lendAddress, uint256 _index, uint256 _payAmount) external nonReentrant whenNotPaused {
+    function Pay(address _lendAddress, uint256 _lendIndex, uint256 _borrowerIndex, uint256 _payAmount) external nonReentrant whenNotPaused {
         require(_lendAddress != address(0), "_lendAddress is not a zero address");
+        require(_lendAddress != msg.sender, "lendAddress is not msg.sender");
         require(_payAmount != 0, "The number of payment amount cannot be equal to 0");
 
         Borrower[] storage borrowerInfo = BorrowerData[msg.sender];
         uint256 borrowerInfoLength = borrowerInfo.length;
-        require(_index <= borrowerInfoLength - 1, "Index Overrun");
+        require(_borrowerIndex <= borrowerInfoLength - 1, "Index Overrun");
 
         // Compare the number of returns
-        Borrower storage personalBorrowerInfo = BorrowerData[msg.sender][_index];
-        require(_payAmount <= personalBorrowerInfo.Amount, "The returned quantity must be less than or equal to the borrowed quantity.");
+        Borrower storage personalBorrowerInfo = BorrowerData[msg.sender][_borrowerIndex];
 
          // Interest calculation
-        uint256 borrowerInterest = calculatingInterest(_lendAddress, msg.sender,  _index,  _payAmount);
+        uint256 borrowerInterest = calculatingInterest(_lendAddress, msg.sender,  _borrowerIndex,  _payAmount);
+
+        require(_payAmount <= personalBorrowerInfo.Amount + borrowerInterest, "The returned quantity must be less than or equal to the borrowed quantity.");
 
         // Calculate whether the user's balance is sufficient for return
         uint256 userBalance = IERC20(personalBorrowerInfo.Token).balanceOf(msg.sender);
@@ -295,10 +320,14 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
             personalBorrowerInfo.BorrowStartTime = 0;
         }
         // save  lend info
-        Lender storage personalLenderInfo = LenderData[_lendAddress][_index];
+        Lender[]  storage lendInfo = LenderData[_lendAddress];
+        uint256 lendInfoLength = lendInfo.length;
+        require(_lendIndex <= lendInfoLength - 1, "Index Overrun");
+
+        Lender storage personalLenderInfo = LenderData[_lendAddress][_lendIndex];
         personalLenderInfo.Amount = personalLenderInfo.Amount - _payAmount;
         // log
-        emit Payment(_lendAddress, _index, _payAmount);
+        emit Payment(_lendAddress, _lendIndex, _borrowerIndex, _payAmount);
     }
 
 
