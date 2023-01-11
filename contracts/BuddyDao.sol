@@ -132,6 +132,11 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
         return lenLender;
     }
 
+    // Get Lender Address
+    function GetLenderAddress(address _lenderAddress) public view returns(address[] memory){
+        return LenderNumber[_lenderAddress];
+    }
+
     // Get Lends Homepage Data
     function GetLenderData(address _lenderAddress, address _approveAddress) public view returns (Lender[] memory ) {
         Lender[] memory lenderAddressData = LenderData[_lenderAddress][_approveAddress];
@@ -148,6 +153,11 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
     function GetBorrowerAddressLengeth(address _borrowerAddress) public view returns(uint256) {
         uint256 lenBorrower = (BorrowerNumber[_borrowerAddress]).length;
         return lenBorrower;
+    }
+
+    // Get Borrower Address
+    function GetBorrowerAddress(address _borrowerAddress) public view returns(address[] memory) {
+        return BorrowerNumber[_borrowerAddress];
     }
 
     // Get Borrower Homepage Data
@@ -167,9 +177,10 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
         require(_approveAddress != address(0), "_approveAddress is not a zero address");
         require(_token != address(0), "_token is not a zero address");
         require(_fixedRate <= MaxFixedRate, "Must be less than the maximum interest");
+        require(_approveAddress != msg.sender, "approve address is not msg.sender");
 
         uint256 allowBalance = IERC20(_token).allowance(msg.sender, address(this));
-        require(_amount <= allowBalance, "Lack of authorized");
+        require(_amount <= allowBalance, "Lend lack of allowance");
 
         uint256 erc20Balance = IERC20(_token).balanceOf(msg.sender);
         require(_amount <= erc20Balance, "The authorized quantity must be greater than the balance");
@@ -217,7 +228,7 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
         require(_approveAddress != address(0), "approveAddress is not a zero address");
         require(_cancelAmount != 0, "The number of cancellations cannot be equal to 0");
         require(_approveAddress != msg.sender, "approveAddress is not msg.sender");
-        require(!LenderIsBool[msg.sender][_approveAddress], "lender is not approve approveAddress");
+        require(LenderIsBool[msg.sender][_approveAddress], "lender is not approve approveAddress");
 
         Lender[]  storage lendInfo = LenderData[msg.sender][_approveAddress];
         uint256 lendInfoLength = lendInfo.length;
@@ -255,7 +266,7 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
         require(_lendAddress != address(0), "_lendAddress is not a zero address");
         require(_lendAddress != msg.sender, "lendAddress is not msg.sender");
         require(_borrowerAmount != 0, "The number of borrower amount cannot be equal to 0");
-        require(!BorrowerIsBool[msg.sender][_lendAddress], "lender is not approve msg.sender");
+        require(BorrowerIsBool[msg.sender][_lendAddress], "lender is not approve msg.sender");
 
         Borrower[] storage borrowerInfo = BorrowerData[msg.sender][_lendAddress];
         uint256 borrowerInfoLength = borrowerInfo.length;
@@ -313,7 +324,7 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
         require(_lendAddress != address(0), "_lendAddress is not a zero address");
         require(_lendAddress != msg.sender, "lendAddress is not msg.sender");
         require(_payAmount != 0, "The number of payment amount cannot be equal to 0");
-        require(!BorrowerIsBool[msg.sender][_lendAddress], "lender is not approve msg.sender");
+        require(BorrowerIsBool[msg.sender][_lendAddress], "lender is not approve msg.sender");
 
         Borrower[] storage borrowerInfo = BorrowerData[msg.sender][_lendAddress];
         uint256 borrowerInfoLength = borrowerInfo.length;
@@ -326,6 +337,10 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
         uint256 borrowerInterest = calculatingInterest(_lendAddress, msg.sender,  _index,  _payAmount);
 
         require(_payAmount <= personalBorrowerInfo.Amount + borrowerInterest, "The returned quantity must be less than or equal to the borrowed quantity.");
+
+        // check allowance
+        uint256 allowBalance = IERC20(personalBorrowerInfo.Token).allowance(msg.sender, address(this));
+        require(_payAmount <= allowBalance, "borrower lack of allowance");
 
         // Calculate whether the user's balance is sufficient for return
         uint256 userBalance = IERC20(personalBorrowerInfo.Token).balanceOf(msg.sender);
@@ -386,7 +401,6 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
                          if (data.length == 0) {
                              continue;
                          }
-
                          uint256[] memory BorrowerAddressIndex = TotalBorrowerIndexArrary[totalBorrower[i]][BorrowerAddress[j]];
                          for (uint256 k = 0; k < BorrowerAddressIndex.length; k++) {
                               for (uint256 index = 0; index < data.length; index++){
@@ -399,6 +413,11 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
                                       // Determine whether the lending user has sufficient balance to pay the fee
                                       uint256 borrowerBalance = IERC20(data[index].Token).balanceOf(totalBorrower[i]);
                                       if (borrowerBalance < fixedRate ){
+                                          continue;
+                                      }
+                                      // check allowance
+                                      uint256 allowBalance = IERC20(data[index].Token).allowance(totalBorrower[i], address(this));
+                                      if (allowBalance < fixedRate){
                                           continue;
                                       }
                                       // payment fee
