@@ -16,11 +16,11 @@ async function main() {
   );
 
   console.log("Account balance:", (await deployer.getBalance()).toString());
-  // 0.01
-  const serviceFee = "10000000000000000";
+  // 0.05
+  const serviceFee = "50000000000000000";
   const serviceFeeAddress = "0x679629069bd69eEe0E6f1c85e1DE927FbF8dab8f";
-  // 0.5
-  const maxFixedRate = "500000000000000000";
+  // 0.1
+  const maxFixedRate = "100000000000000000";
 
   const buddyDaoToken = await ethers.getContractFactory("BuddyDao");
   const BuddyDaoToken = await buddyDaoToken.deploy(serviceFee, serviceFeeAddress, maxFixedRate);
