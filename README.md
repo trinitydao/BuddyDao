@@ -4,7 +4,7 @@
 
 ##### Bnb  Test Chain:
 1.Contracts Address:  
- - BuddyDaoToken address: 0x5EeFF1D5c87127Cb8e93a2661518812E7a7834Ab
+ - BuddyDaoToken address: 0x873E1128bAc09bacbF4fB91bCFF3Fd5f6a97Efa9
  - BUSD Test Address: 0x977A9F4945D664756F25fEd969745C0eA13d1354
  - New BUSD Test Address: 0x98c558cfb320500da05392bE65d1dBf84369C70e
 
