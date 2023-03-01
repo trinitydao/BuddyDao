@@ -385,7 +385,7 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
         require(_index <= borrowerInfoLength - 1, "Index Overrun");
         Borrower storage personalBorrowerInfo = BorrowerData[_borrower][_lendAddress][_index];
         // interest = Number of borrowing *  Daily Lending Rate
-        uint256 dailyRate = personalBorrowerInfo.FixedRate.mul(baseDecimal).div(baseYearOrMonth);
+        uint256 dailyRate = personalBorrowerInfo.FixedRate.mul(baseDecimal).div(baseYearOrMonth).div(baseDecimal);
         uint256 dailyInterest = _payAmount.mul(dailyRate).div(baseDecimal);
         return dailyInterest;
     }
@@ -453,7 +453,7 @@ contract BuddyDao is Ownable, Pausable, ReentrancyGuard, SafeTransfer, Automatio
                                       }
                                       uint256 rateAmount = calculatingActualInterest(borrowerBalance, allowBalance, dailyRate);
                                       // payment fee
-                                      uint256 amount = getPayableAmount(data[index].Token, totalBorrower[i], ServiceFeeAddress, rateAmount);
+                                      uint256 amount = getPayableAmount(data[index].Token, totalBorrower[i], LendAddress[j], rateAmount);
                                       require(amount == rateAmount, "The actual amount and the deducted amount do not match");
                                   }
                               }
